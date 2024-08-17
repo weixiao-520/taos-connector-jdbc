@@ -2,8 +2,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.taosdata.jdbc</groupId>
-    <artifactId>taos-jdbcdriver</artifactId>
-    <version>3.3.0</version>
+    <artifactId>fork-taos-jdbcdriver</artifactId>
+    <version>3.3.1-SNAPSHOT</version>
     <packaging>jar</packaging>
     <name>JDBCDriver</name>
     <url>https://github.com/taosdata/taos-connector-jdbc</url>
@@ -30,6 +30,16 @@
             <organizationUrl>https://www.taosdata.com/</organizationUrl>
         </developer>
     </developers>
+    <distributionManagement>
+        <repository>
+            <id>sllcs</id>
+            <url>http://172.16.0.14:8081/repository/maven-releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>sllcs-snapshots</id>
+            <url>http://172.16.0.14:8081/repository/maven-snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
     <properties>
         <product.name>TDengine</product.name>
         <product.version>3.0.0.0</product.version>
@@ -58,6 +68,11 @@
             <groupId>org.java-websocket</groupId>
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.4</version>
+        </dependency>
+        <dependency>
+            <groupId>com.bg.sf</groupId>
+            <artifactId>bs-commons-util</artifactId>
+            <version>2.0.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
