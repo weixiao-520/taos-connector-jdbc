@@ -14,6 +14,7 @@
  *****************************************************************************/
 package com.taosdata.jdbc;
 
+import com.bg.sf.commons.util.thread.ThreadPoolerFactory;
 import com.google.common.primitives.Ints;
 import com.google.common.primitives.Longs;
 import com.google.common.primitives.Shorts;
@@ -26,7 +27,9 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import static com.taosdata.jdbc.TSDBConstants.JNI_SUCCESS;
 
@@ -42,8 +45,6 @@ public class TSDBResultSet extends AbstractResultSet {
     private boolean batchFetch;
     private boolean lastWasNull;
     private volatile boolean isClosed;
-    ThreadPoolExecutor backFetchExecutor;
-    ForkJoinPool dataHandleExecutor = ForkJoinPool.commonPool();
     public void setBatchFetch(boolean batchFetch) {
         this.batchFetch = batchFetch;
     }
@@ -81,24 +82,27 @@ public class TSDBResultSet extends AbstractResultSet {
         this.batchFetch = batchFetch;
 
         if (batchFetch){
-            backFetchExecutor = (ThreadPoolExecutor)Executors.newFixedThreadPool(1);
-            backFetchExecutor.submit(() -> {
+            ThreadPoolerFactory.getInstance().execute(() -> {
                 try {
                     while (!isClosed){
                         TSDBResultSetBlockData tsdbResultSetBlockData = new TSDBResultSetBlockData(this.columnMetaDataList, this.columnMetaDataList.size(), timestampPrecision);
                         tsdbResultSetBlockData.returnCode = this.jniConnector.fetchBlock(this.resultSetPointer, tsdbResultSetBlockData);
-
-                        while (!blockingQueueOut.offer(tsdbResultSetBlockData, 10, TimeUnit.MILLISECONDS)) {
-                            if (isClosed) {
-                                return;
+                        try {
+                            if (tsdbResultSetBlockData.returnCode == JNI_SUCCESS) {
+                                ThreadPoolerFactory.getInstance().execute(tsdbResultSetBlockData::doSetByteArray);
+                            } else {
+                                tsdbResultSetBlockData.doneWithNoData();
+                                break;
+                            }
+                        } finally {
+                            while (!blockingQueueOut.offer(tsdbResultSetBlockData, 10, TimeUnit.MILLISECONDS)) {
+                                if (isClosed) {
+                                    return;
+                                }
                             }
                         }
-                        if (tsdbResultSetBlockData.returnCode == JNI_SUCCESS) {
-                            dataHandleExecutor.submit(tsdbResultSetBlockData::doSetByteArray);
-                        } else {
-                            tsdbResultSetBlockData.doneWithNoData();
-                            break;
-                        }
+
+
                     }
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
@@ -118,7 +122,6 @@ public class TSDBResultSet extends AbstractResultSet {
                 Thread.currentThread().interrupt();
             }
             this.blockData.waitTillOK();
-
             int code = this.blockData.returnCode;
             if (code == TSDBConstants.JNI_CONNECTION_NULL) {
                 throw TSDBError.createSQLException(TSDBErrorNumbers.ERROR_JNI_CONNECTION_NULL);
@@ -126,7 +129,9 @@ public class TSDBResultSet extends AbstractResultSet {
                 throw TSDBError.createSQLException(TSDBErrorNumbers.ERROR_JNI_RESULT_SET_NULL);
             } else if (code == TSDBConstants.JNI_NUM_OF_FIELDS_0) {
                 throw TSDBError.createSQLException(TSDBErrorNumbers.ERROR_JNI_NUM_OF_FIELDS_0);
-            } else return code != TSDBConstants.JNI_FETCH_END;
+            } else {
+                return code != TSDBConstants.JNI_FETCH_END;
+            }
         } else {
             if (rowData != null) {
                 this.rowData.clear();
@@ -147,19 +152,6 @@ public class TSDBResultSet extends AbstractResultSet {
             return;
         isClosed = true;
 
-        if (batchFetch){
-            // wait backFetchExecutor to finish
-            while (backFetchExecutor.getActiveCount() != 0) {
-                try {
-                    Thread.sleep(1);
-                } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-            if (!backFetchExecutor.isShutdown()){
-                backFetchExecutor.shutdown();
-            }
-        }
         if (this.statement == null)
             return;
         if (this.jniConnector != null) {
