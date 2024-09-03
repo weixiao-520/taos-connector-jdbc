@@ -33,11 +33,11 @@
     <distributionManagement>
         <repository>
             <id>sllcs</id>
-            <url>http://172.16.0.14:8081/repository/maven-releases/</url>
+            <url>http://10.1.0.15:8081/repository/maven-releases/</url>
         </repository>
         <snapshotRepository>
             <id>sllcs-snapshots</id>
-            <url>http://172.16.0.14:8081/repository/maven-snapshots/</url>
+            <url>http://10.1.0.15:8081/repository/maven-snapshots/</url>
         </snapshotRepository>
     </distributionManagement>
     <properties>
